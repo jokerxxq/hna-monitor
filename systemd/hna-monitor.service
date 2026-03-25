@@ -1,0 +1,15 @@
+[Unit]
+Description=HNA Monitor FastAPI Service
+After=network.target
+
+[Service]
+User=deploy
+Group=deploy
+WorkingDirectory=/home/deploy/apps/hna-monitor
+EnvironmentFile=/home/deploy/apps/hna-monitor/.env
+ExecStart=/home/deploy/apps/hna-monitor/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

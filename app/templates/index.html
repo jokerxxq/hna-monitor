@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>{{ settings.app_name }}</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <style>
+    /* Inline micro-tweaks */
+    .arrow-sep { color: var(--text-disabled); font-size: 12px; margin: 0 2px; }
+    .pending-txt { font-size: 12px; color: var(--text-disabled); }
+  </style>
+</head>
+<body>
+
+<!-- Top Navigation -->
+<nav class="top-nav">
+  <div class="nav-brand">
+    <div class="nav-logo">✈</div>
+    <div class="nav-info">
+      <div class="nav-title">海南航空监控</div>
+      <div class="nav-subtitle">HNA Flight Monitor</div>
+    </div>
+  </div>
+  <div class="nav-right">
+    <span class="status-pill">
+      <span class="lbl">轮询</span>{{ settings.poll_interval_minutes }}m
+    </span>
+    <span class="status-pill">
+      <span class="lbl">通知</span>{{ settings.wechat_provider }}
+    </span>
+    <span class="status-pill countdown">
+      <span class="lbl">下次</span><span id="countdown">--:--</span>
+    </span>
+    <form method="post" action="/monitor/run" style="margin:0">
+      <button type="submit" class="btn-run">⚡ 立即执行</button>
+    </form>
+  </div>
+</nav>
+
+<script>
+  (function(){
+    var t = {{ next_run_ms if next_run_ms else 'null' }};
+    if(!t) return;
+    function tick(){
+      var d = Math.floor((t - Date.now()) / 1000);
+      var el = document.getElementById('countdown');
+      if(!el) return;
+      if(d <= 0){ el.textContent = '即将执行'; return; }
+      var m = Math.floor(d/60), s = d%60;
+      el.textContent = (m<10?'0':'')+m+':'+(s<10?'0':'')+s;
+    }
+    tick(); setInterval(tick, 1000);
+  })();
+</script>
+
+<main class="page-main">
+
+  <!-- Stats Bar -->
+  <div class="stats-bar">
+    <div class="stat-item">
+      <div class="stat-label"><span class="stat-icon">📋</span>监控任务</div>
+      <div class="stat-value primary">{{ tasks|length }}</div>
+      <div class="stat-sub">条任务</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label"><span class="stat-icon">✅</span>已启用</div>
+      <div class="stat-value success">{{ tasks|selectattr('enabled')|list|length }}</div>
+      <div class="stat-sub">条活跃</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label"><span class="stat-icon">🔔</span>已达标</div>
+      <div class="stat-value success">{{ tasks|selectattr('last_price')|selectattr('enabled')|list|length }}</div>
+      <div class="stat-sub">条有价格</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label"><span class="stat-icon">📡</span>数据源</div>
+      <div class="stat-value" style="font-size:15px;margin-top:4px">{{ settings.price_provider }}</div>
+      <div class="stat-sub">价格提供商</div>
+    </div>
+  </div>
+
+  <!-- Add Task -->
+  <section class="card">
+    <div class="card-header">
+      <span class="card-title">
+        <span class="card-title-dot"></span>
+        添加监控任务
+      </span>
+    </div>
+    <div class="form-body">
+      <div class="info-banner">
+        ℹ️&nbsp; 填写出发 / 到达城市，当查到的最低价 <strong>低于价格阈值</strong> 时将自动推送微信提醒。
+      </div>
+      <form class="form-grid" method="post" action="/tasks" autocomplete="off" onsubmit="return validateAC(this)">
+
+        <div class="form-item">
+          <label class="form-label" for="origin_label">出发城市 <span class="req">*</span></label>
+          <div class="ac-wrap">
+            <input class="ac-input" type="text" name="origin_label" id="origin_label"
+                   placeholder="城市名 / 拼音 / 三字码" required />
+            <input type="hidden" name="origin" id="origin_code" />
+            <ul class="ac-list" id="origin_list"></ul>
+          </div>
+          <span class="form-hint-sm">如 深圳 / SZX / HAK</span>
+        </div>
+
+        <div class="form-item">
+          <label class="form-label" for="dest_label">到达城市 <span class="req">*</span></label>
+          <div class="ac-wrap">
+            <input class="ac-input" type="text" name="destination_label" id="dest_label"
+                   placeholder="城市名 / 拼音 / 三字码" required />
+            <input type="hidden" name="destination" id="dest_code" />
+            <ul class="ac-list" id="dest_list"></ul>
+          </div>
+          <span class="form-hint-sm">如 海口 / HAK / CKG</span>
+        </div>
+
+        <div class="form-item">
+          <label class="form-label" for="travel_date">出发日期 <span class="req">*</span></label>
+          <input type="date" name="travel_date" id="travel_date"
+                 required min="{{ today }}" value="{{ today }}" />
+          <span class="form-hint-sm">只能选今天及以后的日期</span>
+        </div>
+
+        <div class="form-item">
+          <label class="form-label">价格阈值 <span class="req">*</span></label>
+          <div class="price-wrap">
+            <span class="price-adorn">&lt;</span>
+            <input type="number" min="1" step="1" name="target_price" placeholder="如 800" required />
+            <span class="price-adorn right">元</span>
+          </div>
+          <span class="form-hint-sm">低于此价格即推送提醒</span>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn-primary">+ 新建任务</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <!-- Task List -->
+  <section class="card">
+    <div class="card-header">
+      <span class="card-title">
+        <span class="card-title-dot"></span>
+        监控任务列表
+      </span>
+      <span class="card-count">{{ tasks|length }}</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th class="td-seq">#</th>
+            <th>日期</th>
+            <th>航线</th>
+            <th style="text-align:right">阈值</th>
+            <th style="text-align:right">当前价</th>
+            <th>状态</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for task in tasks %}
+          <tr>
+            <td class="td-seq">{{ loop.index }}</td>
+            <td class="td-date">
+              <div class="date-main">{{ task.travel_date }}</div>
+            </td>
+            <td class="td-city">
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                <div>
+                  <div class="city-name">{{ airports.get(task.origin, task.origin) }}</div>
+                  <span class="city-tag">{{ task.origin }}</span>
+                </div>
+                <span class="arrow-sep">→</span>
+                <div>
+                  <div class="city-name">{{ airports.get(task.destination, task.destination) }}</div>
+                  <span class="city-tag">{{ task.destination }}</span>
+                </div>
+              </div>
+            </td>
+            <td class="td-price">
+              <div class="price-threshold">&lt;&nbsp;{{ "%.0f"|format(task.target_price) }}<span class="price-unit-sm">元</span></div>
+            </td>
+            <td class="td-price">
+              {% if task.last_price %}
+                <div class="price-current {% if task.last_price < task.target_price %}hit{% endif %}">
+                  {{ "%.0f"|format(task.last_price) }}<span class="price-unit-sm">元</span>
+                </div>
+                {% if task.last_price < task.target_price %}
+                  <div class="badge-hit">✓ 已达标</div>
+                {% endif %}
+              {% else %}
+                <span class="pending-txt">待查询</span>
+              {% endif %}
+            </td>
+            <td>
+              <span class="status-badge {{ 'enabled' if task.enabled else 'disabled' }}">
+                {{ "启用中" if task.enabled else "已停用" }}
+              </span>
+            </td>
+            <td>
+              <div class="ops">
+                <form method="post" action="/tasks/{{ task.id }}/toggle">
+                  <button class="btn-sm" type="submit">{{ "停用" if task.enabled else "启用" }}</button>
+                </form>
+                <form method="post" action="/tasks/{{ task.id }}/delete"
+                      onsubmit="return confirm('确认删除该任务？')">
+                  <button class="btn-sm danger" type="submit">删除</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="7">
+              <div class="empty-state">
+                <div class="empty-icon">🛫</div>
+                <div class="empty-text">暂无监控任务</div>
+                <div class="empty-sub">在上方填写信息，新建第一条监控任务</div>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Logs -->
+  <section class="card">
+    <div class="card-header">
+      <span class="card-title">
+        <span class="card-title-dot"></span>
+        运行日志
+      </span>
+      <span class="card-count">{{ logs|length }}</span>
+    </div>
+    <div class="log-box">
+      {% for log in logs %}
+      <div class="log-row">
+        <span class="log-time">{{ log.created_at }}</span>
+        <span class="log-level {{ log.level|lower }}">{{ log.level }}</span>
+        <span class="log-msg">{{ log.message }}</span>
+      </div>
+      {% else %}
+      <div class="log-empty">暂无日志记录</div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <footer class="page-footer">
+    HNA Flight Monitor &nbsp;·&nbsp; 数据源: {{ settings.price_provider }}
+  </footer>
+
+</main>
+<script src="/static/autocomplete.js"></script>
+</body>
+</html>
